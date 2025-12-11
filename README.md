@@ -29,21 +29,6 @@ A modern, full-stack web application for managing and analyzing slot observation
 - Detailed breakdowns and statistics
 - Auto-refresh capability
 
-## 🚀 Quick Start
-
-### Automated Setup (Recommended)
-
-```powershell
-# Run the setup script
-.\setup.ps1
-
-# In terminal 1 - Start backend
-.\start-backend.ps1
-
-# In terminal 2 - Start frontend
-.\start-frontend.ps1
-```
-
 ### Manual Setup
 
 ```powershell
