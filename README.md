@@ -61,10 +61,6 @@ npm install
 npm run dev
 ```
 
-### Access the Application
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001
-
 ## 🏗️ Tech Stack
 
 ### Frontend
@@ -130,41 +126,12 @@ Built with **shadcn/ui** components:
 - `GET /analytics/statistics` - Statistics
 - `GET /analytics/recent` - Recent activity
 
-## 🛠️ Configuration
-
-### Database (docker-compose.yml)
-- Host: localhost:5432
-- Database: slot_observation
-- User: slotuser
-- Password: slotpass123
-
-### Environment Variables
-**Backend (.env)**
-```env
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USER=slotuser
-DATABASE_PASSWORD=slotpass123
-DATABASE_NAME=slot_observation
-PORT=3001
-```
-
-**Frontend (.env.local)**
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001
-```
-
 ## 🧪 Testing
 
 1. Verify database connection in Database Management card
 2. Create sample slot observations
 3. Check analytics update in real-time
 4. Test edit and delete functionality
-
-## 📚 Documentation
-
-- **[QUICKSTART.md](QUICKSTART.md)** - Comprehensive guide
-- **[INSTALLATION.md](INSTALLATION.md)** - Detailed installation steps
 
 ## 🚨 Troubleshooting
 
