@@ -1,0 +1,14 @@
+INSTRUCTIONS TO ADD LOGOS TO PDF:
+
+1. Save the CHARUSAT logo image as: charusat-logo.png
+2. Save the CSPIT logo image as: cspit-logo.png
+3. Place both files in this folder: frontend/public/
+
+The code will automatically detect and use these logos in the generated PDF.
+
+If logos are not found, it will show placeholder rectangles with text labels.
+
+Image requirements:
+- Format: PNG (preferred) or JPG
+- Recommended size: 500x300 pixels or similar aspect ratio
+- Transparent background preferred for PNG
