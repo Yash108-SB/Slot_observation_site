@@ -82,9 +82,16 @@ export default function SlotEntryCard({ onBack }: SlotEntryCardProps = {}) {
     setLoading(true);
     try {
       const response = await slotApi.getAll();
+      console.log('SlotEntryCardNew - Fetched observations:', response.data.length);
+      console.log('SlotEntryCardNew - Sample data:', response.data[0]);
       setObservations(response.data);
-    } catch (error) {
-      console.error('Failed to fetch observations:', error);
+    } catch (error: any) {
+      console.error('SlotEntryCardNew - Failed to fetch observations:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
     } finally {
       setLoading(false);
     }
@@ -93,10 +100,10 @@ export default function SlotEntryCard({ onBack }: SlotEntryCardProps = {}) {
   useEffect(() => {
     fetchObservations();
     
-    // Auto-refresh every 5 seconds to reflect changes from Database Management
+    // Auto-refresh every 30 seconds to reflect changes
     const intervalId = setInterval(() => {
       fetchObservations();
-    }, 5000);
+    }, 30000);
     
     return () => clearInterval(intervalId);
   }, []);
@@ -207,8 +214,22 @@ export default function SlotEntryCard({ onBack }: SlotEntryCardProps = {}) {
   const sendEmailReport = async () => {
     setSendingEmail(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:3001/email/send-manual-report', {
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Please log in to send emails.',
+          variant: 'destructive',
+        });
+        setSendingEmail(false);
+        return;
+      }
+
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://172.16.5.200:3001';
+      console.log('Sending email request to:', `${apiUrl}/email/send-manual-report`);
+      
+      const response = await fetch(`${apiUrl}/email/send-manual-report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -217,21 +238,35 @@ export default function SlotEntryCard({ onBack }: SlotEntryCardProps = {}) {
         body: JSON.stringify({}),
       });
 
+      console.log('Email response status:', response.status);
+
       if (response.ok) {
         const result = await response.json();
+        console.log('Email sent successfully:', result);
         toast({
           title: 'Email Sent Successfully!',
           description: 'Today\'s attendance report has been sent via email.',
         });
       } else {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || 'Failed to send email');
+        console.error('Email send failed:', errorData);
+        throw new Error(errorData.error || errorData.message || 'Failed to send email');
       }
     } catch (error: any) {
       console.error('Failed to send email:', error);
+      let errorMessage = 'Please check your email configuration and backend logs.';
+      
+      if (error.message?.includes('fetch') || error.message?.includes('Failed to fetch')) {
+        errorMessage = 'Cannot connect to server. Please ensure the backend is running.';
+      } else if (error.message?.includes('ETIMEDOUT') || error.message?.includes('timeout')) {
+        errorMessage = 'Email server connection timeout. Your network may be blocking SMTP ports (587/465). Please contact your network administrator.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: 'Failed to Send Email',
-        description: error.message || 'Please check your email configuration and backend logs.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {

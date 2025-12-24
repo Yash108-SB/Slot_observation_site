@@ -12,13 +12,58 @@ export class EmailService {
 
   constructor(private readonly slotService: SlotService) {
     // Configure email transporter (using Gmail as example)
+    const emailUser = process.env.EMAIL_USER;
+    const emailPassword = process.env.EMAIL_PASSWORD;
+    
+    if (!emailUser || !emailPassword) {
+      this.logger.warn('Email credentials not configured. Email service will not work.');
+      this.logger.warn('Please set EMAIL_USER and EMAIL_PASSWORD in .env file');
+    }
+    
+    // Try multiple configurations for better compatibility
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      requireTLS: true,
       auth: {
-        user: process.env.EMAIL_USER || 'your-email@gmail.com',
-        pass: process.env.EMAIL_PASSWORD || 'your-app-password',
+        user: emailUser,
+        pass: emailPassword,
       },
+      tls: {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false
+      },
+      connectionTimeout: 20000,
+      greetingTimeout: 10000,
+      socketTimeout: 45000,
+      debug: false,
+      logger: false
     });
+    
+    // Verify transporter configuration
+    this.verifyTransporter();
+  }
+
+  private async verifyTransporter() {
+    try {
+      await this.transporter.verify();
+      this.logger.log('✓ Email transporter configured successfully');
+      this.logger.log(`✓ Email user: ${process.env.EMAIL_USER}`);
+      this.logger.log(`✓ Email password configured: ${process.env.EMAIL_PASSWORD ? 'Yes (length: ' + process.env.EMAIL_PASSWORD.length + ')' : 'No'}`);
+      this.logger.log(`✓ Report recipient: ${process.env.REPORT_EMAIL}`);
+    } catch (error) {
+      this.logger.error('✗ Email transporter verification failed:');
+      this.logger.error(`Error: ${error.message}`);
+      if (error.code) {
+        this.logger.error(`Error code: ${error.code}`);
+      }
+      this.logger.error('Common issues:');
+      this.logger.error('  1. Make sure 2-factor authentication is enabled on your Gmail account');
+      this.logger.error('  2. Generate an App Password (not your regular Gmail password)');
+      this.logger.error('  3. Remove any spaces from the App Password in .env file');
+      this.logger.error('  4. Check if "Less secure app access" is enabled (if not using App Password)');
+    }
   }
 
   // Schedule times: 9:30 AM
@@ -147,7 +192,18 @@ export class EmailService {
       this.logger.log(`Attendance report sent successfully for ${time} on ${dayOfWeek}`);
     } catch (error) {
       this.logger.error(`Failed to send attendance report: ${error.message}`);
-      throw error;
+      this.logger.error(`Error stack: ${error.stack}`);
+      if (error.code) {
+        this.logger.error(`Error code: ${error.code}`);
+      }
+      if (error.command) {
+        this.logger.error(`SMTP command: ${error.command}`);
+      }
+      if (error.response) {
+        this.logger.error(`SMTP response: ${error.response}`);
+      }
+      // Don't throw error to prevent cron job from stopping
+      // throw error;
     }
   }
 
@@ -256,10 +312,11 @@ export class EmailService {
         doc.moveDown(0.5);
 
         const tableTop = doc.y;
-        const cellHeight = 90;
+        const cellHeight = 110; // Increased from 90 to 110 for more space
         const numCols = slots.length + 1;
         const colWidth = pageWidth / numCols;
-        const cellPadding = 8;
+        const cellPadding = 6; // Reduced from 8 to 6
+        const innerCellWidth = colWidth - (2 * cellPadding);
         
         // Table header with blue background
         doc.rect(50, tableTop, pageWidth, 25).fillAndStroke('#4A90E2', '#000000');
@@ -298,7 +355,6 @@ export class EmailService {
           slots.forEach((slot, slotIndex) => {
             const x = 50 + colWidth * (slotIndex + 1);
             const cellX = x + cellPadding;
-            const cellWidth = colWidth - (2 * cellPadding);
             
             const roomObs = items.filter(obs => 
               obs.location && obs.location.includes(room) && matchSlot(obs, slot)
@@ -307,101 +363,137 @@ export class EmailService {
             if (roomObs.length > 0) {
               const obs = roomObs[0];
               
-              // Debug: Log the observation data
-              this.logger.log(`Cell data - Slot: ${obs.slotName}, Amount: ${obs.amount}, Notes: ${obs.notes}, Status: ${obs.status}`);
+              // Log observation data for debugging
+              this.logger.log(`Processing cell - Room: ${room}, Slot: ${slot.label}`);
+              this.logger.log(`  SlotName: ${obs.slotName}`);
+              this.logger.log(`  Amount: ${obs.amount}`);
+              this.logger.log(`  Status: "${obs.status}"`);
+              this.logger.log(`  Notes: "${obs.notes}"`);
               
-              let yPos = currentY + cellPadding;
+              let yPos = currentY + cellPadding + 2;
+              const maxCellY = currentY + cellHeight - cellPadding - 2;
               
-              // 1. Slot name (clean format)
-              let slotName = obs.slotName || '';
-              slotName = slotName.replace(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*-\s*/i, '');
-              
-              doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
-              doc.text(slotName, cellX, yPos, { 
-                width: cellWidth, 
-                align: 'center',
-                lineBreak: false
-              });
-              yPos += 13;
-              
-              // 2. Faculty name(s) - Parse from notes field
-              if (obs.notes) {
-                const noteParts = obs.notes.split(' | ');
-                const facultyPart = noteParts.find(p => p.startsWith('Faculty:'));
-                const faculty2Part = noteParts.find(p => p.startsWith('Faculty2:'));
+              // Helper to safely add text and update yPos
+              const addText = (text: string, fontSize: number, fontStyle: string, color: string, options: any = {}) => {
+                if (yPos >= maxCellY) return;
                 
-                if (facultyPart) {
-                  const facultyName = facultyPart.replace('Faculty: ', '');
-                  doc.fontSize(7).font('Helvetica').fillColor('#0066cc');
-                  doc.text(`Faculty: ${facultyName}`, cellX, yPos, { 
-                    width: cellWidth, 
-                    align: 'center',
-                    lineBreak: false
-                  });
-                  yPos += 11;
-                }
-                
-                // Show Faculty2 for dual batch labs (638/515)
-                if (faculty2Part) {
-                  const faculty2Name = faculty2Part.replace('Faculty2: ', '');
-                  doc.fontSize(7).font('Helvetica').fillColor('#0066cc');
-                  doc.text(`Faculty 2: ${faculty2Name}`, cellX, yPos, { 
-                    width: cellWidth, 
-                    align: 'center',
-                    lineBreak: false
-                  });
-                  yPos += 11;
-                }
-              }
-              
-              // 3. Present students count
-              if (obs.amount !== undefined && obs.amount !== null) {
-                doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0066cc');
-                doc.text(`Present: ${obs.amount}`, cellX, yPos, { 
-                  width: cellWidth, 
-                  align: 'center',
-                  lineBreak: false
-                });
-                yPos += 13;
-              }
-              
-              // 4. Remarks section - use STATUS field (not notes)
-              // The frontend saves remarks to the status field
-              const remarksText = obs.status && obs.status.trim() && obs.status !== 'pending' && obs.status !== 'Active' 
-                ? obs.status.trim() 
-                : '';
-              
-              this.logger.log(`Remarks text to display: "${remarksText}"`);
-              
-              if (remarksText && remarksText.length > 0) {
-                // Separator line
-                doc.strokeColor('#999999').lineWidth(0.5);
-                doc.moveTo(cellX + 6, yPos).lineTo(cellX + cellWidth - 6, yPos).stroke();
-                yPos += 5;
-                
-                // Calculate available height for remarks
-                const maxRemarksHeight = (currentY + cellHeight - cellPadding - 2) - yPos;
-                
-                // Remarks text - larger font for better visibility
-                doc.fontSize(6.5).font('Helvetica').fillColor('#333333');
-                
-                // Create text box with proper wrapping
-                doc.text(remarksText, cellX + 4, yPos, { 
-                  width: cellWidth - 8, 
+                doc.fontSize(fontSize).font(fontStyle).fillColor(color);
+                const textOptions = {
+                  width: innerCellWidth - 8,
                   align: 'left',
                   lineBreak: true,
-                  height: maxRemarksHeight,
-                  continued: false
-                });
+                  ...options
+                };
                 
-                this.logger.log(`Remarks displayed in PDF`);
+                // Calculate text height before rendering
+                const textHeight = doc.heightOfString(text, textOptions);
+                const availableHeight = maxCellY - yPos;
+                
+                if (textHeight > availableHeight) {
+                  textOptions.height = availableHeight;
+                  textOptions.ellipsis = true;
+                }
+                
+                doc.text(text, cellX + 4, yPos, textOptions);
+                yPos += Math.min(textHeight, availableHeight) + 1.5; // Reduced from 2 to 1.5
+              };
+              
+              // 1. Subject name (clean format)
+              let slotName = obs.slotName || '';
+              slotName = slotName.replace(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*-\s*/i, '');
+              slotName = slotName.replace(/Slot \d+ - /, '');
+              
+              addText(slotName, 7, 'Helvetica-Bold', '#000000'); // Reduced from 7.5 to 7
+              
+              // 2. Faculty information from notes
+              if (obs.notes && yPos < maxCellY - 8) {
+                const noteParts = obs.notes.split(' | ');
+                
+                // Primary faculty
+                const facultyPart = noteParts.find((p: string) => p.startsWith('Faculty:'));
+                if (facultyPart) {
+                  const facultyName = facultyPart.replace('Faculty: ', '').trim();
+                  addText(facultyName, 6.5, 'Helvetica', '#0066cc');
+                }
+                
+                // Batch info (for labs)
+                const batchPart = noteParts.find((p: string) => p.startsWith('Batch:'));
+                if (batchPart && yPos < maxCellY - 8) {
+                  const batchInfo = batchPart.replace('Batch: ', '').trim();
+                  addText(batchInfo, 6, 'Helvetica', '#666666');
+                }
+                
+                // Division
+                const divisionPart = noteParts.find((p: string) => p.startsWith('Division:'));
+                if (divisionPart && yPos < maxCellY - 8) {
+                  const divisionInfo = divisionPart.replace('Division: ', '').trim();
+                  addText(divisionInfo, 6, 'Helvetica', '#666666');
+                }
+                
+                // Secondary faculty (for dual batch labs)
+                const faculty2Part = noteParts.find((p: string) => p.startsWith('Faculty2:'));
+                if (faculty2Part && yPos < maxCellY - 8) {
+                  yPos += 2; // Extra spacing before second batch
+                  const faculty2Name = faculty2Part.replace('Faculty2: ', '').trim();
+                  addText(`Batch 2: ${faculty2Name}`, 6.5, 'Helvetica', '#0066cc');
+                }
+                
+                const batch2Part = noteParts.find((p: string) => p.startsWith('Batch2:'));
+                if (batch2Part && yPos < maxCellY - 8) {
+                  const batch2Info = batch2Part.replace('Batch2: ', '').trim();
+                  addText(batch2Info, 6, 'Helvetica', '#666666');
+                }
+              }
+              
+              // 3. Present students
+              if ((obs.amount !== undefined && obs.amount !== null) && yPos < maxCellY - 8) {
+                yPos += 1; // Reduced from 2
+                addText(`Present: ${obs.amount}`, 6.5, 'Helvetica-Bold', '#228B22'); // Reduced from 7 to 6.5
+              }
+              
+              // 4. Remarks (from status field)
+              // The frontend saves remarks to the status field, default is 'Active' when no remarks
+              let remarksText = '';
+              if (obs.status) {
+                const statusLower = obs.status.trim().toLowerCase();
+                // Filter out default/empty statuses
+                if (statusLower && 
+                    statusLower !== 'pending' && 
+                    statusLower !== 'active' &&
+                    statusLower !== 'inactive' &&
+                    statusLower !== 'completed') {
+                  remarksText = obs.status.trim();
+                }
+              }
+              
+              this.logger.log(`  Remarks check:`);
+              this.logger.log(`    Raw status: "${obs.status}"`);
+              this.logger.log(`    Processed remarks: "${remarksText}"`);
+              this.logger.log(`    yPos: ${yPos}, maxCellY: ${maxCellY}, space available: ${maxCellY - yPos}`);
+              
+              if (remarksText && remarksText.length > 0) {
+                const spaceNeeded = 10; // Reduced from 12 to 10
+                if (yPos < maxCellY - spaceNeeded) {
+                  yPos += 2;
+                  
+                  // Separator line
+                  doc.strokeColor('#CCCCCC').lineWidth(0.3);
+                  doc.moveTo(cellX + 8, yPos).lineTo(cellX + innerCellWidth - 8, yPos).stroke();
+                  yPos += 2;
+                  
+                  addText('Remarks:', 5.5, 'Helvetica-Bold', '#666666', { lineBreak: false }); // Reduced from 6 to 5.5
+                  addText(remarksText, 5.5, 'Helvetica', '#333333'); // Reduced from 6 to 5.5
+                  this.logger.log(`    ✓ Remarks displayed successfully`);
+                } else {
+                  this.logger.log(`    ✗ Not enough space (need ${spaceNeeded}px, have ${maxCellY - yPos}px)`);
+                }
               } else {
-                this.logger.log(`No remarks found for this observation`);
+                this.logger.log(`    ✗ No valid remarks to display`);
               }
             } else {
-              // Empty cell with centered dash
-              doc.fontSize(18).fillColor('#cccccc');
-              doc.text('-', x, currentY + (cellHeight / 2) - 9, { 
+              // Empty cell - center align dash
+              doc.fontSize(8).font('Helvetica').fillColor('#CCCCCC');
+              doc.text('-', 50 + colWidth * (slotIndex + 1), currentY + cellHeight / 2 - 4, {
                 width: colWidth,
                 align: 'center',
                 lineBreak: false
@@ -415,28 +507,21 @@ export class EmailService {
         return currentY;
       };
 
-      // Create LABS table with lab sessions (2-hour slots)
-      let currentY = createTable('LABS', labs, allLabRooms, labSlots, doc.y);
-      doc.moveDown(1.5);
+      // Create Labs table
+      let currentY = doc.y;
+      currentY = createTable('LABS', labs, allLabRooms, labSlots, currentY);
       
-      // Check if we need a new page
-      if (doc.y > 600) {
+      // Add page break if needed
+      if (currentY > doc.page.height - 150) {
         doc.addPage();
-        currentY = 40;
+        currentY = 50;
+      } else {
+        currentY += 20;
       }
       
-      // Create LECTURES table with individual slots (1-hour slots)
-      createTable('LECTURES (Classes)', classes, allClassRooms, lectureSlots, doc.y);
+      // Create Lectures table
+      createTable('LECTURES', classes, allClassRooms, lectureSlots, currentY);
       
-      // Footer
-      doc.fontSize(8).fillColor('#666666');
-      doc.text(
-        `Page 1 of 1`,
-        50,
-        doc.page.height - 50,
-        { width: pageWidth, align: 'center' }
-      );
-
       doc.end();
     });
   }
@@ -444,6 +529,10 @@ export class EmailService {
   // Manual trigger endpoint (for testing)
   async sendManualReport(targetEmail: string) {
     try {
+      console.log('\n\n========================================');
+      console.log('MANUAL REPORT GENERATION STARTED');
+      console.log('========================================\n');
+      
       const today = new Date();
       const dayOfWeek = today.toLocaleDateString('en-US', { weekday: 'long' });
       const currentTime = today.toLocaleTimeString('en-US', { 
@@ -452,24 +541,42 @@ export class EmailService {
       });
 
       this.logger.log(`Sending manual report to: ${targetEmail}`);
+      console.log(`Day of week: ${dayOfWeek}`);
 
       const observations = await this.slotService.findAll();
       
-      // Log all observations with their notes
+      // Log all observations with their status
       this.logger.log(`Total observations fetched: ${observations.length}`);
+      console.log('\n=== ALL OBSERVATIONS IN DATABASE ===');
       observations.forEach((obs, index) => {
-        this.logger.log(`Observation ${index + 1}: ID=${obs.id}, Slot=${obs.slotName}, Location=${obs.location}, Amount=${obs.amount}, Notes="${obs.notes || 'EMPTY'}"`);
+        console.log(`\n[${index + 1}] ID: ${obs.id}`);
+        console.log(`    SlotName: "${obs.slotName}"`);
+        console.log(`    Location: "${obs.location}"`);
+        console.log(`    Amount: ${obs.amount}`);
+        console.log(`    Status (REMARKS): "${obs.status}"`);
+        console.log(`    Notes (Schedule): "${obs.notes}"`);
+        console.log(`    UpdatedAt: ${obs.updatedAt}`);
       });
+      console.log('\n=== END ALL OBSERVATIONS ===\n');
       
+      // Filter for today's day of week (not creation date)
+      // This shows the timetable for today (Saturday, Monday, etc.) with current attendance
       const todayObservations = observations.filter(obs => {
-        const obsDate = new Date(obs.createdAt);
-        return obsDate.toDateString() === today.toDateString();
+        if (!obs.slotName) return false;
+        const matches = obs.slotName.toLowerCase().includes(dayOfWeek.toLowerCase());
+        console.log(`Checking "${obs.slotName}" for "${dayOfWeek}": ${matches ? 'MATCH' : 'no match'}`);
+        return matches;
       });
 
-      this.logger.log(`Found ${todayObservations.length} observations for today`);
+      console.log(`\n=== FILTERED FOR ${dayOfWeek.toUpperCase()} ===`);
+      console.log(`Found ${todayObservations.length} observations for ${dayOfWeek}\n`);
       todayObservations.forEach((obs, index) => {
-        this.logger.log(`Today's observation ${index + 1}: Slot=${obs.slotName}, Notes="${obs.notes || 'NO REMARKS'}"`);
+        console.log(`[${index + 1}] ${obs.slotName}`);
+        console.log(`    Location: ${obs.location}, Amount: ${obs.amount}`);
+        console.log(`    Status (Remarks): "${obs.status}"`);
+        console.log(`    Notes (Schedule): "${obs.notes}"`);
       });
+      console.log('=== END FILTERED ===\n');
 
       const pdfBuffer = await this.generatePDF(
         todayObservations, 
@@ -500,13 +607,24 @@ export class EmailService {
       };
 
       this.logger.log('Sending email...');
-      await this.transporter.sendMail(mailOptions);
+      const info = await this.transporter.sendMail(mailOptions);
       this.logger.log('Email sent successfully!');
+      this.logger.log(`Message ID: ${info.messageId}`);
+      this.logger.log(`Response: ${info.response}`);
       
-      return { success: true, message: 'Manual report sent successfully' };
+      return { success: true, message: 'Manual report sent successfully', messageId: info.messageId };
     } catch (error) {
       this.logger.error(`Failed to send manual report: ${error.message}`);
       this.logger.error(`Error stack: ${error.stack}`);
+      if (error.code) {
+        this.logger.error(`Error code: ${error.code}`);
+      }
+      if (error.command) {
+        this.logger.error(`SMTP command: ${error.command}`);
+      }
+      if (error.response) {
+        this.logger.error(`SMTP response: ${error.response}`);
+      }
       throw new Error(`Email sending failed: ${error.message}`);
     }
   }

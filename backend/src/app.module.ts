@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { DatabaseModule } from './database/database.module';
 import { SlotModule } from './slot/slot.module';
@@ -20,7 +20,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DATABASE_HOST || '127.0.0.1',
-      port: parseInt(process.env.DATABASE_PORT || '54321', 10),
+      port: parseInt(process.env.DATABASE_PORT || '5432', 10),
       username: process.env.DATABASE_USER || 'slotuser',
       password: process.env.DATABASE_PASSWORD || 'password123',
       database: process.env.DATABASE_NAME || 'slot_observation',
@@ -41,6 +41,11 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     SchedulerModule,
   ],
   providers: [
+    // Apply rate limiting globally to prevent DDoS attacks
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     // Apply JWT authentication globally to all routes
     {
       provide: APP_GUARD,

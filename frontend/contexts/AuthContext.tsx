@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Check for existing token on mount
-    const storedToken = localStorage.getItem('auth_token');
+    const storedToken = localStorage.getItem('token');
     if (storedToken) {
       try {
         const decoded: any = jwtDecode(storedToken);
@@ -45,11 +45,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: decoded.role,
           });
         } else {
-          localStorage.removeItem('auth_token');
+          localStorage.removeItem('token');
         }
       } catch (error) {
         console.error('Invalid token:', error);
-        localStorage.removeItem('auth_token');
+        localStorage.removeItem('token');
       }
     }
     setIsLoading(false);
@@ -57,7 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (username: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:3001/auth/login', {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
       
-      localStorage.setItem('auth_token', data.access_token);
+      localStorage.setItem('token', data.access_token);
       setToken(data.access_token);
       
       const decoded: any = jwtDecode(data.access_token);
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
     setToken(null);
     setUser(null);
     router.push('/login');

@@ -21,6 +21,7 @@
     "clsx": "^2.0.0",
     "jspdf": "^3.0.4",
     "jspdf-autotable": "^5.0.2",
+    "jwt-decode": "^4.0.0",
     "lucide-react": "^0.303.0",
     "next": "14.0.4",
     "react": "^18.2.0",

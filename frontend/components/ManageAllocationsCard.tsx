@@ -118,21 +118,25 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
     if (!scheduleData.subjectName || !selectedRoom) return [];
     
     if (isLabRoom) {
-      // For labs: only show faculty who teach this subject in this specific lab
-      return allLabs
+      // For labs: only show unique faculty who teach this subject in this specific lab
+      const facultyList = allLabs
         .filter(lab => 
           lab.subjectName === scheduleData.subjectName && 
           lab.labNumbers.includes(selectedRoom)
         )
         .map(lab => lab.facultyName);
+      // Return unique faculty names only
+      return [...new Set(facultyList)];
     } else {
-      // For classrooms: only show faculty who teach this subject in this specific classroom
-      return allLectures
+      // For classrooms: only show unique faculty who teach this subject in this specific classroom
+      const facultyList = allLectures
         .filter(lecture => 
           lecture.subjectName === scheduleData.subjectName && 
           lecture.classRoomNumbers.includes(selectedRoom)
         )
         .map(lecture => lecture.facultyName);
+      // Return unique faculty names only
+      return [...new Set(facultyList)];
     }
   };
   
@@ -158,73 +162,141 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
     }
   };
   
-  // Auto-fill fields when subject and faculty are selected
+  // Get available batches based on subject and faculty
+  const getAvailableBatches = () => {
+    if (!scheduleData.subjectName || !scheduleData.facultyName || !selectedRoom) return [];
+    
+    if (isLabRoom) {
+      const matchingLabs = allLabs.filter(
+        lab => 
+          lab.subjectName === scheduleData.subjectName && 
+          lab.facultyName === scheduleData.facultyName &&
+          lab.labNumbers.includes(selectedRoom)
+      );
+      // Return unique batch names
+      return [...new Set(matchingLabs.map(lab => lab.batchName))].filter(Boolean);
+    }
+    return [];
+  };
+  
+  // Get available divisions based on subject and faculty
+  const getAvailableDivisions = () => {
+    if (!scheduleData.subjectName || !scheduleData.facultyName || !selectedRoom) return [];
+    
+    if (isLabRoom) {
+      const matchingLabs = allLabs.filter(
+        lab => 
+          lab.subjectName === scheduleData.subjectName && 
+          lab.facultyName === scheduleData.facultyName &&
+          lab.labNumbers.includes(selectedRoom)
+      );
+      return [...new Set(matchingLabs.map(lab => lab.division))].filter(Boolean);
+    } else {
+      const matchingLectures = allLectures.filter(
+        lecture => 
+          lecture.subjectName === scheduleData.subjectName && 
+          lecture.facultyName === scheduleData.facultyName &&
+          lecture.classRoomNumbers.includes(selectedRoom)
+      );
+      return [...new Set(matchingLectures.map(lecture => lecture.division))].filter(Boolean);
+    }
+  };
+  
+  // Get available batches for second batch in dual-batch labs
+  const getAvailableBatchesForSecondBatch = () => {
+    if (!scheduleData.subjectName || !secondBatchData.facultyName || !selectedRoom) return [];
+    
+    const matchingLabs = allLabs.filter(
+      lab => 
+        lab.subjectName === scheduleData.subjectName && 
+        lab.facultyName === secondBatchData.facultyName &&
+        lab.labNumbers.includes(selectedRoom)
+    );
+    return [...new Set(matchingLabs.map(lab => lab.batchName))].filter(Boolean);
+  };
+  
+  // Auto-fill only semester when subject and faculty are selected
   useEffect(() => {
     const matchingData = getMatchingData();
     if (matchingData) {
-      if (isLabRoom) {
-        setScheduleData(prev => ({
-          ...prev,
-          semester: matchingData.semester,
-          batchName: matchingData.batchName,
-          division: matchingData.division,
-        }));
-      } else {
-        // For lectures, no batchName
-        setScheduleData(prev => ({
-          ...prev,
-          semester: matchingData.semester,
-          division: matchingData.division,
-          batchName: '', // Clear batchName for lectures
-        }));
-      }
+      setScheduleData(prev => ({
+        ...prev,
+        semester: matchingData.semester,
+        // Don't auto-fill batch and division - let user select them
+        batchName: isLabRoom ? prev.batchName : '', // Clear batchName for lectures, keep for labs
+        division: prev.division,
+      }));
     }
   }, [scheduleData.subjectName, scheduleData.facultyName, isLabRoom]);
 
-  // Auto-fill second batch fields when faculty is selected
-  useEffect(() => {
-    if (isDualBatchLab && enableSecondBatch && secondBatchData.facultyName && scheduleData.subjectName && selectedRoom) {
-      const matchingLab = allLabs.find(
-        lab => 
-          lab.subjectName === scheduleData.subjectName && 
-          lab.facultyName === secondBatchData.facultyName &&
-          lab.labNumbers.includes(selectedRoom)
-      );
-      
-      if (matchingLab && matchingLab.batchName) {
-        setSecondBatchData(prev => ({
-          ...prev,
-          batchName: matchingLab.batchName,
-        }));
-      }
-    }
-  }, [secondBatchData.facultyName, scheduleData.subjectName, enableSecondBatch, isDualBatchLab, selectedRoom, allLabs]);
-
   useEffect(() => {
     if (selectedRoom) {
+      console.log('Selected room changed to:', selectedRoom);
       fetchObservations();
     }
   }, [selectedRoom]);
 
+  // Also fetch on component mount and when observations change
+  useEffect(() => {
+    console.log('Observations updated, count:', observations.length);
+    if (observations.length > 0) {
+      console.log('Sample observation:', observations[0]);
+    }
+  }, [observations]);
+
   const fetchObservations = async () => {
     setIsLoading(true);
     try {
+      // Force fresh data from server
       const response = await slotApi.getAll();
+      console.log('=== FETCHED OBSERVATIONS ===');
+      console.log('Total observations:', response.data.length);
+      console.log('Observations for room', selectedRoom, ':', 
+        response.data.filter(obs => obs.location === selectedRoom)
+      );
+      console.log('All observations:', response.data);
       setObservations(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch observations:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      // Only show error toast if it's not a 401 (handled by interceptor)
+      if (error.response?.status !== 401) {
+        toast({
+          title: 'Error',
+          description: error.response?.data?.message || error.message || 'Failed to load schedules',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const getScheduleForSlot = (day: string, slotId: string) => {
-    return observations.find(
+    const found = observations.find(
       (obs) =>
         obs.location === selectedRoom &&
         obs.slotName.includes(day) &&
         obs.slotName.includes(`Slot ${slotId}`)
     );
+    
+    // Debug logging
+    if (observations.length > 0) {
+      console.log('Looking for:', { day, slotId, selectedRoom });
+      console.log('All observations:', observations.map(o => ({ 
+        location: o.location, 
+        slotName: o.slotName,
+        matches: o.location === selectedRoom && o.slotName.includes(day) && o.slotName.includes(`Slot ${slotId}`)
+      })));
+      if (found) console.log('Found schedule:', found);
+    }
+    
+    return found;
   };
 
   const handleEditSlot = (day: string, slot: string) => {
@@ -351,11 +423,18 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
       setEditDialogOpen(false);
       setCurrentEdit(null);
       setScheduleData({ subjectName: '', facultyName: '', semester: '', batchName: '', division: '' });
-      fetchObservations();
-    } catch (error) {
+      
+      // Force immediate refresh
+      console.log('Schedule saved, refreshing data...');
+      await fetchObservations();
+      
+      console.log('Data refreshed, observations count:', observations.length);
+    } catch (error: any) {
+      console.error('Save schedule error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to save schedule';
       toast({
         title: 'Error',
-        description: 'Failed to save schedule',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -564,7 +643,7 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
                   <Label htmlFor="facultyName">Faculty</Label>
                   <Select
                     value={scheduleData.facultyName}
-                    onValueChange={(value) => setScheduleData({ ...scheduleData, facultyName: value })}
+                    onValueChange={(value) => setScheduleData({ ...scheduleData, facultyName: value, batchName: '', division: '' })}
                     disabled={!scheduleData.subjectName}
                   >
                     <SelectTrigger id="facultyName">
@@ -600,25 +679,55 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
                 {isLabRoom && (
                   <div className="space-y-2">
                     <Label htmlFor="batchName">Batch</Label>
-                    <Input
-                      id="batchName"
+                    <Select
                       value={scheduleData.batchName}
-                      readOnly
-                      placeholder="Auto-filled"
-                      className="bg-gray-50"
-                    />
+                      onValueChange={(value) => setScheduleData({ ...scheduleData, batchName: value })}
+                      disabled={!scheduleData.facultyName}
+                    >
+                      <SelectTrigger id="batchName">
+                        <SelectValue placeholder={scheduleData.facultyName ? "Select batch" : "Select faculty first"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getAvailableBatches().length === 0 ? (
+                          <SelectItem value="no-batch" disabled>
+                            No batches found
+                          </SelectItem>
+                        ) : (
+                          getAvailableBatches().map((batch, index) => (
+                            <SelectItem key={index} value={batch}>
+                              {batch}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
                 <div className="space-y-2">
                   <Label htmlFor="division">Division</Label>
-                  <Input
-                    id="division"
+                  <Select
                     value={scheduleData.division}
-                    readOnly
-                    placeholder="Auto-filled"
-                    className="bg-gray-50"
-                  />
+                    onValueChange={(value) => setScheduleData({ ...scheduleData, division: value })}
+                    disabled={!scheduleData.facultyName}
+                  >
+                    <SelectTrigger id="division">
+                      <SelectValue placeholder={scheduleData.facultyName ? "Select division" : "Select faculty first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getAvailableDivisions().length === 0 ? (
+                        <SelectItem value="no-division" disabled>
+                          No divisions found
+                        </SelectItem>
+                      ) : (
+                        getAvailableDivisions().map((division, index) => (
+                          <SelectItem key={index} value={division}>
+                            {division}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Second Batch Section for Labs 638 and 515 */}
@@ -645,7 +754,7 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
                           <Label htmlFor="faculty2">Faculty (Batch 2)</Label>
                           <Select
                             value={secondBatchData.facultyName}
-                            onValueChange={(value) => setSecondBatchData({ ...secondBatchData, facultyName: value })}
+                            onValueChange={(value) => setSecondBatchData({ ...secondBatchData, facultyName: value, batchName: '' })}
                             disabled={!scheduleData.subjectName}
                           >
                             <SelectTrigger id="faculty2">
@@ -669,13 +778,28 @@ export default function ManageAllocationsCard({ onBack }: ManageAllocationsCardP
 
                         <div className="space-y-2 bg-blue-50 p-3 rounded-lg">
                           <Label htmlFor="batch2">Batch Name (Batch 2)</Label>
-                          <Input
-                            id="batch2"
+                          <Select
                             value={secondBatchData.batchName}
-                            readOnly
-                            placeholder="Auto-filled from Manage Subjects"
-                            className="bg-gray-50"
-                          />
+                            onValueChange={(value) => setSecondBatchData({ ...secondBatchData, batchName: value })}
+                            disabled={!secondBatchData.facultyName}
+                          >
+                            <SelectTrigger id="batch2">
+                              <SelectValue placeholder={secondBatchData.facultyName ? "Select batch" : "Select faculty first"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getAvailableBatchesForSecondBatch().length === 0 ? (
+                                <SelectItem value="no-batch" disabled>
+                                  No batches found
+                                </SelectItem>
+                              ) : (
+                                getAvailableBatchesForSecondBatch().map((batch, index) => (
+                                  <SelectItem key={index} value={batch}>
+                                    {batch}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </>
                     )}

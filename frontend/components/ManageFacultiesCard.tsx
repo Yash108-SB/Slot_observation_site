@@ -29,10 +29,11 @@ const departments = [
 ];
 
 export default function ManageFacultiesCard({ onBack }: ManageFacultiesCardProps) {
-  const { faculties, addFaculty, updateFaculty, deleteFaculty } = useFaculty();
+  const { faculties, addFaculty, updateFaculty, deleteFaculty, isLoading } = useFaculty();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingFacultyId, setEditingFacultyId] = useState<number | null>(null);
+  const [editingFacultyId, setEditingFacultyId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', department: '' });
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   // Debug: Log faculties when component renders or faculties change
@@ -46,13 +47,13 @@ export default function ManageFacultiesCard({ onBack }: ManageFacultiesCardProps
     setDialogOpen(true);
   };
 
-  const handleEditClick = (faculty: { id: number; name: string; department: string }) => {
+  const handleEditClick = (faculty: { id: string; name: string; department: string }) => {
     setEditingFacultyId(faculty.id);
     setFormData({ name: faculty.name, department: faculty.department });
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim() || !formData.department) {
       toast({
         title: 'Error',
@@ -62,39 +63,54 @@ export default function ManageFacultiesCard({ onBack }: ManageFacultiesCardProps
       return;
     }
 
-    if (editingFacultyId) {
-      // Edit existing faculty
-      console.log('Updating faculty:', editingFacultyId, formData);
-      updateFaculty(editingFacultyId, formData);
-      toast({
-        title: 'Success',
-        description: 'Faculty updated successfully',
-      });
-    } else {
-      // Add new faculty
-      const newFaculty = {
-        id: Date.now(),
-        name: formData.name,
-        department: formData.department,
-      };
-      console.log('Adding new faculty:', newFaculty);
-      addFaculty(newFaculty);
-      toast({
-        title: 'Success',
-        description: 'Faculty added successfully',
-      });
-    }
+    try {
+      setIsSaving(true);
+      
+      if (editingFacultyId) {
+        // Edit existing faculty
+        console.log('Updating faculty:', editingFacultyId, formData);
+        await updateFaculty(editingFacultyId, formData);
+        toast({
+          title: 'Success',
+          description: 'Faculty updated successfully',
+        });
+      } else {
+        // Add new faculty
+        console.log('Adding new faculty:', formData);
+        await addFaculty(formData);
+        toast({
+          title: 'Success',
+          description: 'Faculty added successfully',
+        });
+      }
 
-    setDialogOpen(false);
-    setFormData({ name: '', department: '' });
+      setDialogOpen(false);
+      setFormData({ name: '', department: '' });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to save faculty. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = (id: number) => {
-    deleteFaculty(id);
-    toast({
-      title: 'Success',
-      description: 'Faculty deleted successfully',
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteFaculty(id);
+      toast({
+        title: 'Success',
+        description: 'Faculty deleted successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete faculty. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -124,7 +140,17 @@ export default function ManageFacultiesCard({ onBack }: ManageFacultiesCardProps
           </div>
         </CardHeader>
         <CardContent className="p-8">
-          {faculties.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="bg-red-50 p-8 rounded-2xl mb-6">
+                <User className="h-14 w-14 text-[#DC2626] animate-pulse" />
+              </div>
+              <h3 className="text-xl font-semibold text-[#1E293B] mb-2">Loading Faculties...</h3>
+              <p className="text-[#64748B] max-w-md text-base">
+                Please wait while we fetch the faculty data.
+              </p>
+            </div>
+          ) : faculties.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="bg-red-50 p-8 rounded-2xl mb-6">
                 <User className="h-14 w-14 text-[#DC2626]" />
@@ -216,10 +242,19 @@ export default function ManageFacultiesCard({ onBack }: ManageFacultiesCardProps
             </div>
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleSave} className="flex-1 bg-[#DC2626] hover:bg-[#B91C1C] shadow-sm rounded-xl">
-              {editingFacultyId ? 'Update' : 'Add'} Faculty
+            <Button 
+              onClick={handleSave} 
+              className="flex-1 bg-[#DC2626] hover:bg-[#B91C1C] shadow-sm rounded-xl"
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving...' : editingFacultyId ? 'Update' : 'Add'} Faculty
             </Button>
-            <Button variant="outline" className="border-[#E2E8F0] hover:bg-[#F6F8FC] rounded-xl" onClick={() => setDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              className="border-[#E2E8F0] hover:bg-[#F6F8FC] rounded-xl" 
+              onClick={() => setDialogOpen(false)}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
           </div>

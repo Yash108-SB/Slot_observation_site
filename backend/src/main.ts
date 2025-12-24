@@ -32,12 +32,18 @@ async function bootstrap() {
   // Security: Cookie parser for secure cookie handling
   app.use(cookieParser());
   
-  // Security: CORS configuration with strict origin policy
+  // Security: CORS configuration - Allow connections from network
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://172.16.5.200:3000',
+      `http://${process.env.SERVER_IP || '172.16.5.200'}:3000`,
+      process.env.FRONTEND_URL
+    ].filter(Boolean),
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires'],
     exposedHeaders: ['Authorization'],
     maxAge: 3600,
   });
@@ -45,7 +51,7 @@ async function bootstrap() {
   // Security: Global validation pipe to validate all DTOs and prevent injection attacks
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // Strip properties that don't have decorators
-    forbidNonWhitelisted: true, // Throw error if non-whitelisted properties are present
+    forbidNonWhitelisted: false, // Allow extra properties (less strict for flexibility)
     transform: true, // Automatically transform payloads to DTO instances
     disableErrorMessages: false,
     transformOptions: {
@@ -54,8 +60,9 @@ async function bootstrap() {
   }));
   
   const port = process.env.PORT || 3001;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
   console.log(`Application is running on: http://localhost:${port}`);
+  console.log(`Network access: http://172.16.5.200:${port}`);
   console.log('Security features enabled: Helmet, CORS, Rate Limiting, JWT Authentication, Input Validation');
 }
 bootstrap();

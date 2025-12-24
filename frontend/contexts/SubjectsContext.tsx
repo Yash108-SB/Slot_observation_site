@@ -1,9 +1,22 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api from '@/lib/api';
+
+export interface Allocation {
+  id: string;
+  type: 'LAB' | 'LECTURE';
+  subjectName: string;
+  facultyName: string;
+  semester: string;
+  division: string;
+  batchName?: string;
+  labNumbers?: string[];
+  classRoomNumbers?: string[];
+}
 
 export interface Lab {
-  id: number;
+  id: string;
   subjectName: string;
   facultyName: string;
   semester: string;
@@ -13,7 +26,7 @@ export interface Lab {
 }
 
 export interface Lecture {
-  id: number;
+  id: string;
   subjectName: string;
   facultyName: string;
   semester: string;
@@ -22,7 +35,7 @@ export interface Lecture {
 }
 
 export interface Subject {
-  id: number;
+  id: string;
   name: string;
   year: string;
 }
@@ -31,12 +44,15 @@ interface SubjectsContextType {
   labs: Lab[];
   lectures: Lecture[];
   subjects: Subject[];
-  setLabs: (labs: Lab[]) => void;
-  setLectures: (lectures: Lecture[]) => void;
-  setSubjects: (subjects: Subject[]) => void;
-  addLab: (lab: Lab) => void;
-  addLecture: (lecture: Lecture) => void;
-  addSubject: (subject: Subject) => void;
+  addLab: (lab: Omit<Lab, 'id'>) => Promise<void>;
+  addLecture: (lecture: Omit<Lecture, 'id'>) => Promise<void>;
+  addSubject: (subject: Omit<Subject, 'id'>) => Promise<void>;
+  deleteSubject: (id: string) => Promise<void>;
+  deleteLab: (id: string) => Promise<void>;
+  deleteLecture: (id: string) => Promise<void>;
+  refreshSubjects: () => Promise<void>;
+  refreshAllocations: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const SubjectsContext = createContext<SubjectsContextType | undefined>(undefined);
@@ -45,74 +61,150 @@ export function SubjectsProvider({ children }: { children: ReactNode }) {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load data from localStorage on mount
-  useEffect(() => {
+  // Fetch subjects from backend
+  const refreshSubjects = async () => {
     try {
-      const savedLabs = localStorage.getItem('labs');
-      const savedLectures = localStorage.getItem('lectures');
-      const savedSubjects = localStorage.getItem('subjects');
-      
-      console.log('SubjectsContext - Loading from localStorage');
-      console.log('Saved labs:', savedLabs);
-      console.log('Saved lectures:', savedLectures);
-      console.log('Saved subjects:', savedSubjects);
-      
-      if (savedLabs) {
-        const parsedLabs = JSON.parse(savedLabs);
-        console.log('Parsed labs:', parsedLabs);
-        setLabs(parsedLabs);
-      }
-      if (savedLectures) {
-        const parsedLectures = JSON.parse(savedLectures);
-        console.log('Parsed lectures:', parsedLectures);
-        setLectures(parsedLectures);
-      }
-      if (savedSubjects) {
-        const parsedSubjects = JSON.parse(savedSubjects);
-        console.log('Parsed subjects:', parsedSubjects);
-        setSubjects(parsedSubjects);
-      }
+      const response = await api.get('/slots/subjects');
+      console.log('SubjectsContext - Loaded subjects from backend:', response.data);
+      setSubjects(response.data);
     } catch (error) {
-      console.error('Error loading from localStorage:', error);
-    } finally {
-      setIsLoaded(true);
+      console.error('Error loading subjects from backend:', error);
     }
+  };
+
+  // Fetch allocations from backend
+  const refreshAllocations = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get('/slots/allocations');
+      console.log('SubjectsContext - Loaded allocations from backend:', response.data);
+      
+      // Split allocations into labs and lectures
+      const allAllocations: Allocation[] = response.data;
+      const labsData = allAllocations
+        .filter(a => a.type === 'LAB')
+        .map(a => ({
+          id: a.id,
+          subjectName: a.subjectName,
+          facultyName: a.facultyName,
+          semester: a.semester,
+          division: a.division,
+          batchName: a.batchName || '',
+          labNumbers: a.labNumbers || [],
+        }));
+      const lecturesData = allAllocations
+        .filter(a => a.type === 'LECTURE')
+        .map(a => ({
+          id: a.id,
+          subjectName: a.subjectName,
+          facultyName: a.facultyName,
+          semester: a.semester,
+          division: a.division,
+          classRoomNumbers: a.classRoomNumbers || [],
+        }));
+      
+      setLabs(labsData);
+      setLectures(lecturesData);
+    } catch (error) {
+      console.error('Error loading allocations from backend:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      await Promise.all([refreshSubjects(), refreshAllocations()]);
+    };
+    loadData();
   }, []);
 
-  // Save to localStorage whenever data changes (only after initial load)
-  useEffect(() => {
-    if (isLoaded) {
-      console.log('SubjectsContext - Saving labs to localStorage:', labs);
-      localStorage.setItem('labs', JSON.stringify(labs));
+  const addLab = async (labData: Omit<Lab, 'id'>) => {
+    try {
+      const allocationData: Omit<Allocation, 'id'> = {
+        type: 'LAB',
+        ...labData,
+      };
+      const response = await api.post('/slots/allocations', allocationData);
+      const newLab: Lab = {
+        id: response.data.id,
+        subjectName: response.data.subjectName,
+        facultyName: response.data.facultyName,
+        semester: response.data.semester,
+        division: response.data.division,
+        batchName: response.data.batchName || '',
+        labNumbers: response.data.labNumbers || [],
+      };
+      setLabs(prev => [...prev, newLab]);
+    } catch (error) {
+      console.error('Error adding lab:', error);
+      throw error;
     }
-  }, [labs, isLoaded]);
-
-  useEffect(() => {
-    if (isLoaded) {
-      console.log('SubjectsContext - Saving lectures to localStorage:', lectures);
-      localStorage.setItem('lectures', JSON.stringify(lectures));
-    }
-  }, [lectures, isLoaded]);
-
-  useEffect(() => {
-    if (isLoaded) {
-      console.log('SubjectsContext - Saving subjects to localStorage:', subjects);
-      localStorage.setItem('subjects', JSON.stringify(subjects));
-    }
-  }, [subjects, isLoaded]);
-
-  const addLab = (lab: Lab) => {
-    setLabs([...labs, lab]);
   };
 
-  const addLecture = (lecture: Lecture) => {
-    setLectures([...lectures, lecture]);
+  const addLecture = async (lectureData: Omit<Lecture, 'id'>) => {
+    try {
+      const allocationData: Omit<Allocation, 'id'> = {
+        type: 'LECTURE',
+        ...lectureData,
+      };
+      const response = await api.post('/slots/allocations', allocationData);
+      const newLecture: Lecture = {
+        id: response.data.id,
+        subjectName: response.data.subjectName,
+        facultyName: response.data.facultyName,
+        semester: response.data.semester,
+        division: response.data.division,
+        classRoomNumbers: response.data.classRoomNumbers || [],
+      };
+      setLectures(prev => [...prev, newLecture]);
+    } catch (error) {
+      console.error('Error adding lecture:', error);
+      throw error;
+    }
   };
 
-  const addSubject = (subject: Subject) => {
-    setSubjects([...subjects, subject]);
+  const addSubject = async (subjectData: Omit<Subject, 'id'>) => {
+    try {
+      const response = await api.post('/slots/subjects', subjectData);
+      setSubjects(prev => [...prev, response.data]);
+    } catch (error) {
+      console.error('Error adding subject:', error);
+      throw error;
+    }
+  };
+
+  const deleteSubject = async (id: string) => {
+    try {
+      await api.delete(`/slots/subjects/${id}`);
+      setSubjects(prev => prev.filter(s => s.id !== id));
+    } catch (error) {
+      console.error('Error deleting subject:', error);
+      throw error;
+    }
+  };
+
+  const deleteLab = async (id: string) => {
+    try {
+      await api.delete(`/slots/allocations/${id}`);
+      setLabs(prev => prev.filter(l => l.id !== id));
+    } catch (error) {
+      console.error('Error deleting lab:', error);
+      throw error;
+    }
+  };
+
+  const deleteLecture = async (id: string) => {
+    try {
+      await api.delete(`/slots/allocations/${id}`);
+      setLectures(prev => prev.filter(l => l.id !== id));
+    } catch (error) {
+      console.error('Error deleting lecture:', error);
+      throw error;
+    }
   };
 
   return (
@@ -121,12 +213,15 @@ export function SubjectsProvider({ children }: { children: ReactNode }) {
         labs,
         lectures,
         subjects,
-        setLabs,
-        setLectures,
-        setSubjects,
         addLab,
         addLecture,
         addSubject,
+        deleteSubject,
+        deleteLab,
+        deleteLecture,
+        refreshSubjects,
+        refreshAllocations,
+        isLoading,
       }}
     >
       {children}

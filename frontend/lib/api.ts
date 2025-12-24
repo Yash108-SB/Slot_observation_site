@@ -9,6 +9,44 @@ const api = axios.create({
   },
 });
 
+// Add request interceptor to include JWT token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('API Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    
+    if (error.response?.status === 401) {
+      // Token expired or invalid, redirect to login
+      console.warn('Unauthorized - redirecting to login');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export interface SlotObservation {
   id: string;
   slotName: string;
@@ -49,8 +87,12 @@ export interface Statistics {
 export const slotApi = {
   getAll: () => api.get<SlotObservation[]>('/slots', {
     headers: {
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache'
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    },
+    params: {
+      _: Date.now() // Cache buster
     }
   }),
   getOne: (id: string) => api.get<SlotObservation>(`/slots/${id}`),

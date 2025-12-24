@@ -58,8 +58,8 @@ export default function DashboardPage() {
         {/* Welcome Animation */}
         {!showContent && (
           <div className="fixed inset-0 flex items-center justify-center bg-white z-50">
-            <div className="text-center">
-              <h1 className={`text-5xl font-bold text-blue-600 animate-fade-in ${showWelcome ? '' : 'animate-fade-out'}`}>
+            <div className="w-full max-w-4xl text-center px-4">
+              <h1 className={`text-5xl md:text-6xl font-bold text-blue-600 animate-fade-in ${showWelcome ? '' : 'animate-fade-out'}`} style={{ textAlign: 'center', display: 'block', width: '100%' }}>
                 {showWelcome ? 'Slot Observation Site' : 'Welcome'}
               </h1>
             </div>

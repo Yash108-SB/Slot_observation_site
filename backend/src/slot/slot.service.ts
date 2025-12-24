@@ -4,12 +4,21 @@ import { Repository, Between } from 'typeorm';
 import { SlotObservation } from './entities/slot-observation.entity';
 import { SlotMaster } from './entities/slot-master.entity';
 import { DailyAttendance } from './entities/daily-attendance.entity';
+import { Faculty } from './entities/faculty.entity';
+import { Subject } from './entities/subject.entity';
+import { Allocation } from './entities/allocation.entity';
 import { CreateSlotObservationDto } from './dto/create-slot-observation.dto';
 import { UpdateSlotObservationDto } from './dto/update-slot-observation.dto';
 import { CreateSlotMasterDto } from './dto/create-slot-master.dto';
 import { UpdateSlotMasterDto } from './dto/update-slot-master.dto';
 import { CreateDailyAttendanceDto } from './dto/create-daily-attendance.dto';
 import { UpdateDailyAttendanceDto } from './dto/update-daily-attendance.dto';
+import { CreateFacultyDto } from './dto/create-faculty.dto';
+import { UpdateFacultyDto } from './dto/update-faculty.dto';
+import { CreateSubjectDto } from './dto/create-subject.dto';
+import { UpdateSubjectDto } from './dto/update-subject.dto';
+import { CreateAllocationDto } from './dto/create-allocation.dto';
+import { UpdateAllocationDto } from './dto/update-allocation.dto';
 
 @Injectable()
 export class SlotService {
@@ -20,6 +29,12 @@ export class SlotService {
     private slotMasterRepository: Repository<SlotMaster>,
     @InjectRepository(DailyAttendance)
     private dailyAttendanceRepository: Repository<DailyAttendance>,
+    @InjectRepository(Faculty)
+    private facultyRepository: Repository<Faculty>,
+    @InjectRepository(Subject)
+    private subjectRepository: Repository<Subject>,
+    @InjectRepository(Allocation)
+    private allocationRepository: Repository<Allocation>,
   ) {}
 
   // Helper function to determine lab capacity based on room/lab number
@@ -260,5 +275,80 @@ export class SlotService {
 
   async remove(id: string): Promise<void> {
     await this.slotRepository.delete(id);
+  }
+
+  // ===== FACULTY METHODS =====
+  async createFaculty(createDto: CreateFacultyDto): Promise<Faculty> {
+    const faculty = this.facultyRepository.create(createDto);
+    return await this.facultyRepository.save(faculty);
+  }
+
+  async findAllFaculties(): Promise<Faculty[]> {
+    return await this.facultyRepository.find({
+      order: { name: 'ASC' },
+    });
+  }
+
+  async findOneFaculty(id: string): Promise<Faculty> {
+    return await this.facultyRepository.findOne({ where: { id } });
+  }
+
+  async updateFaculty(id: string, updateDto: UpdateFacultyDto): Promise<Faculty> {
+    await this.facultyRepository.update(id, updateDto);
+    return await this.findOneFaculty(id);
+  }
+
+  async removeFaculty(id: string): Promise<void> {
+    await this.facultyRepository.delete(id);
+  }
+
+  // ===== SUBJECT METHODS =====
+  async createSubject(createDto: CreateSubjectDto): Promise<Subject> {
+    const subject = this.subjectRepository.create(createDto);
+    return await this.subjectRepository.save(subject);
+  }
+
+  async findAllSubjects(): Promise<Subject[]> {
+    return await this.subjectRepository.find({
+      order: { year: 'ASC', name: 'ASC' },
+    });
+  }
+
+  async findOneSubject(id: string): Promise<Subject> {
+    return await this.subjectRepository.findOne({ where: { id } });
+  }
+
+  async updateSubject(id: string, updateDto: UpdateSubjectDto): Promise<Subject> {
+    await this.subjectRepository.update(id, updateDto);
+    return await this.findOneSubject(id);
+  }
+
+  async removeSubject(id: string): Promise<void> {
+    await this.subjectRepository.delete(id);
+  }
+
+  // ===== ALLOCATION METHODS =====
+  async createAllocation(createDto: CreateAllocationDto): Promise<Allocation> {
+    const allocation = this.allocationRepository.create(createDto);
+    return await this.allocationRepository.save(allocation);
+  }
+
+  async findAllAllocations(): Promise<Allocation[]> {
+    return await this.allocationRepository.find({
+      order: { semester: 'ASC', subjectName: 'ASC' },
+    });
+  }
+
+  async findOneAllocation(id: string): Promise<Allocation> {
+    return await this.allocationRepository.findOne({ where: { id } });
+  }
+
+  async updateAllocation(id: string, updateDto: UpdateAllocationDto): Promise<Allocation> {
+    await this.allocationRepository.update(id, updateDto);
+    return await this.findOneAllocation(id);
+  }
+
+  async removeAllocation(id: string): Promise<void> {
+    await this.allocationRepository.delete(id);
   }
 }

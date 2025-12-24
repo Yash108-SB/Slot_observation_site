@@ -5,9 +5,19 @@ import { SlotController } from './slot.controller';
 import { SlotObservation } from './entities/slot-observation.entity';
 import { SlotMaster } from './entities/slot-master.entity';
 import { DailyAttendance } from './entities/daily-attendance.entity';
+import { Faculty } from './entities/faculty.entity';
+import { Subject } from './entities/subject.entity';
+import { Allocation } from './entities/allocation.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SlotObservation, SlotMaster, DailyAttendance])],
+  imports: [TypeOrmModule.forFeature([
+    SlotObservation, 
+    SlotMaster, 
+    DailyAttendance,
+    Faculty,
+    Subject,
+    Allocation,
+  ])],
   controllers: [SlotController],
   providers: [SlotService],
   exports: [SlotService, TypeOrmModule],

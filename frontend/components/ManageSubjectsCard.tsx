@@ -13,7 +13,7 @@ import { useFaculty } from '@/contexts/FacultyContext';
 import { useSubjects } from '@/contexts/SubjectsContext';
 
 interface Lab {
-  id: number;
+  id: string;
   subjectName: string;
   facultyName: string;
   semester: string;
@@ -23,7 +23,7 @@ interface Lab {
 }
 
 interface Lecture {
-  id: number;
+  id: string;
   subjectName: string;
   facultyName: string;
   semester: string;
@@ -32,7 +32,7 @@ interface Lecture {
 }
 
 interface Subject {
-  id: number;
+  id: string;
   name: string;
   year: string;
 }
@@ -71,7 +71,7 @@ const getSemestersForYear = (year: Year | null): string[] => {
 
 export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) {
   const { faculties } = useFaculty();
-  const { labs: allLabs, lectures: allLectures, subjects: allSubjects, setLabs: setAllLabs, setLectures: setAllLectures, setSubjects: setAllSubjects } = useSubjects();
+  const { labs: allLabs, lectures: allLectures, subjects: allSubjects, addLab, addLecture, addSubject, deleteSubject, deleteLab, deleteLecture, isLoading } = useSubjects();
   const [currentView, setCurrentView] = useState<View>('hub');
   const [selectedYear, setSelectedYear] = useState<Year | null>(null);
   
@@ -87,29 +87,6 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
   });
   
   const subjects = allSubjects.filter(s => s.year === selectedYear);
-  
-  const setLabs = (newLabs: Lab[]) => {
-    const otherLabs = allLabs.filter(lab => {
-      const subject = allSubjects.find(s => s.name === lab.subjectName && s.year === selectedYear);
-      return !subject;
-    });
-    setAllLabs([...otherLabs, ...newLabs]);
-  };
-  
-  const setLectures = (newLectures: Lecture[]) => {
-    const otherLectures = allLectures.filter(lecture => {
-      const subject = allSubjects.find(s => s.name === lecture.subjectName && s.year === selectedYear);
-      return !subject;
-    });
-    setAllLectures([...otherLectures, ...newLectures]);
-  };
-  
-  const setSubjects = (newSubjects: Subject[]) => {
-    const otherSubjects = allSubjects.filter(s => s.year !== selectedYear);
-    const combined = [...otherSubjects, ...newSubjects];
-    console.log('ManageSubjectsCard - Setting subjects:', combined);
-    setAllSubjects(combined);
-  };
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [subjectDialogOpen, setSubjectDialogOpen] = useState(false);
@@ -175,7 +152,7 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
     setSubjectDialogOpen(true);
   };
 
-  const handleSaveSubject = () => {
+  const handleSaveSubject = async () => {
     if (!subjectFormData.name.trim()) {
       toast({
         title: 'Error',
@@ -185,42 +162,50 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
       return;
     }
 
-    if (editingSubject) {
-      setSubjects(subjects.map(s => 
-        s.id === editingSubject.id 
-          ? { ...s, name: subjectFormData.name }
-          : s
-      ));
+    try {
+      if (editingSubject) {
+        // Update functionality not yet implemented in context
+        toast({
+          title: 'Error',
+          description: 'Subject editing not yet supported',
+          variant: 'destructive',
+        });
+      } else {
+        const newSubjectData = {
+          name: subjectFormData.name,
+          year: selectedYear!,
+        };
+        console.log('ManageSubjectsCard - Adding new subject:', newSubjectData);
+        await addSubject(newSubjectData);
+        toast({
+          title: 'Success',
+          description: 'Subject added successfully',
+        });
+      }
+      setSubjectDialogOpen(false);
+    } catch (error) {
       toast({
-        title: 'Success',
-        description: 'Subject updated successfully',
-      });
-    } else {
-      const newSubject: Subject = {
-        id: Date.now(),
-        name: subjectFormData.name,
-        year: selectedYear!,
-      };
-      console.log('ManageSubjectsCard - Adding new subject:', newSubject);
-      console.log('ManageSubjectsCard - Current subjects before add:', subjects);
-      const updatedSubjects = [...subjects, newSubject];
-      console.log('ManageSubjectsCard - Updated subjects after add:', updatedSubjects);
-      setSubjects(updatedSubjects);
-      toast({
-        title: 'Success',
-        description: 'Subject added successfully',
+        title: 'Error',
+        description: 'Failed to save subject',
+        variant: 'destructive',
       });
     }
-
-    setSubjectDialogOpen(false);
   };
 
-  const handleDeleteSubject = (id: number) => {
-    setSubjects(subjects.filter(s => s.id !== id));
-    toast({
-      title: 'Success',
-      description: 'Subject deleted successfully',
-    });
+  const handleDeleteSubject = async (id: string) => {
+    try {
+      await deleteSubject(id);
+      toast({
+        title: 'Success',
+        description: 'Subject deleted successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete subject',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleAddLab = () => {
@@ -264,7 +249,7 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
     setDialogOpen(true);
   };
 
-  const handleSaveLab = () => {
+  const handleSaveLab = async () => {
     if (!labFormData.subjectName || !labFormData.facultyName.trim() || !labFormData.semester || !labFormData.division || !labFormData.batchName || labFormData.labNumbers.length === 0) {
       toast({
         title: 'Error',
@@ -274,32 +259,32 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
       return;
     }
 
-    if (editingLab) {
-      setLabs(labs.map(l => 
-        l.id === editingLab.id 
-          ? { ...l, ...labFormData }
-          : l
-      ));
+    try {
+      if (editingLab) {
+        // Update functionality not yet implemented
+        toast({
+          title: 'Error',
+          description: 'Lab editing not yet supported',
+          variant: 'destructive',
+        });
+      } else {
+        await addLab(labFormData);
+        toast({
+          title: 'Success',
+          description: 'Lab added successfully',
+        });
+      }
+      setDialogOpen(false);
+    } catch (error) {
       toast({
-        title: 'Success',
-        description: 'Lab updated successfully',
-      });
-    } else {
-      const newLab: Lab = {
-        id: Date.now(),
-        ...labFormData,
-      };
-      setLabs([...labs, newLab]);
-      toast({
-        title: 'Success',
-        description: 'Lab added successfully',
+        title: 'Error',
+        description: 'Failed to save lab',
+        variant: 'destructive',
       });
     }
-
-    setDialogOpen(false);
   };
 
-  const handleSaveLecture = () => {
+  const handleSaveLecture = async () => {
     if (!lectureFormData.subjectName || !lectureFormData.facultyName.trim() || !lectureFormData.semester || !lectureFormData.division || lectureFormData.classRoomNumbers.length === 0) {
       toast({
         title: 'Error',
@@ -309,45 +294,61 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
       return;
     }
 
-    if (editingLecture) {
-      setLectures(lectures.map(l => 
-        l.id === editingLecture.id 
-          ? { ...l, ...lectureFormData }
-          : l
-      ));
+    try {
+      if (editingLecture) {
+        // Update functionality not yet implemented
+        toast({
+          title: 'Error',
+          description: 'Lecture editing not yet supported',
+          variant: 'destructive',
+        });
+      } else {
+        await addLecture(lectureFormData);
+        toast({
+          title: 'Success',
+          description: 'Lecture added successfully',
+        });
+      }
+      setDialogOpen(false);
+    } catch (error) {
       toast({
-        title: 'Success',
-        description: 'Lecture updated successfully',
-      });
-    } else {
-      const newLecture: Lecture = {
-        id: Date.now(),
-        ...lectureFormData,
-      };
-      setLectures([...lectures, newLecture]);
-      toast({
-        title: 'Success',
-        description: 'Lecture added successfully',
+        title: 'Error',
+        description: 'Failed to save lecture',
+        variant: 'destructive',
       });
     }
-
-    setDialogOpen(false);
   };
 
-  const handleDeleteLab = (id: number) => {
-    setLabs(labs.filter(l => l.id !== id));
-    toast({
-      title: 'Success',
-      description: 'Lab deleted successfully',
-    });
+  const handleDeleteLab = async (id: string) => {
+    try {
+      await deleteLab(id);
+      toast({
+        title: 'Success',
+        description: 'Lab deleted successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete lab',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDeleteLecture = (id: number) => {
-    setLectures(lectures.filter(l => l.id !== id));
-    toast({
-      title: 'Success',
-      description: 'Lecture deleted successfully',
-    });
+  const handleDeleteLecture = async (id: string) => {
+    try {
+      await deleteLecture(id);
+      toast({
+        title: 'Success',
+        description: 'Lecture deleted successfully',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete lecture',
+        variant: 'destructive',
+      });
+    }
   };
 
   const toggleLabNumber = (labNumber: string) => {
@@ -368,38 +369,41 @@ export default function ManageSubjectsCard({ onBack }: ManageSubjectsCardProps) 
     }));
   };
 
-  const handleResetYearData = () => {
+  const handleResetYearData = async () => {
     if (!selectedYear) return;
     
     setIsDeleting(true);
     
-    // Simulate deletion with a delay for animation
-    setTimeout(() => {
-      // Filter out all data for the selected year
-      const filteredLabs = allLabs.filter(lab => {
-        const subject = allSubjects.find(s => s.name === lab.subjectName);
-        return subject?.year !== selectedYear;
-      });
+    try {
+      // Get all subjects, labs, and lectures for the selected year
+      const subjectsToDelete = subjects;
+      const labsToDelete = labs;
+      const lecturesToDelete = lectures;
       
-      const filteredLectures = allLectures.filter(lecture => {
-        const subject = allSubjects.find(s => s.name === lecture.subjectName);
-        return subject?.year !== selectedYear;
-      });
+      // Delete all allocations (labs and lectures) for this year
+      const deletePromises = [
+        ...labsToDelete.map(lab => deleteLab(lab.id)),
+        ...lecturesToDelete.map(lecture => deleteLecture(lecture.id)),
+        ...subjectsToDelete.map(subject => deleteSubject(subject.id)),
+      ];
       
-      const filteredSubjects = allSubjects.filter(subject => subject.year !== selectedYear);
-      
-      setAllLabs(filteredLabs);
-      setAllLectures(filteredLectures);
-      setAllSubjects(filteredSubjects);
+      await Promise.all(deletePromises);
       
       toast({
         title: 'Success',
         description: `All data for ${selectedYear} Year has been reset`,
       });
       
-      setIsDeleting(false);
       setShowResetConfirm(false);
-    }, 1500); // 1.5 second delay for animation
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to reset year data. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Year Detail View

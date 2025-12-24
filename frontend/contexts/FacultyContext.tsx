@@ -1,72 +1,88 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api from '@/lib/api';
 
 export interface Faculty {
-  id: number;
+  id: string;
   name: string;
   department: string;
 }
 
 interface FacultyContextType {
   faculties: Faculty[];
-  addFaculty: (faculty: Faculty) => void;
-  updateFaculty: (id: number, faculty: Omit<Faculty, 'id'>) => void;
-  deleteFaculty: (id: number) => void;
+  addFaculty: (faculty: Omit<Faculty, 'id'>) => Promise<void>;
+  updateFaculty: (id: string, faculty: Omit<Faculty, 'id'>) => Promise<void>;
+  deleteFaculty: (id: string) => Promise<void>;
+  refreshFaculties: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const FacultyContext = createContext<FacultyContextType | undefined>(undefined);
 
 export function FacultyProvider({ children }: { children: ReactNode }) {
   const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load faculties from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('faculties');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        console.log('FacultyContext - Loaded from localStorage:', parsed);
-        setFaculties(parsed);
-      } catch (error) {
-        console.error('Error loading faculties from localStorage:', error);
-      }
+  // Fetch faculties from backend
+  const refreshFaculties = async () => {
+    try {
+      setIsLoading(true);
+      const response = await api.get('/slots/faculties');
+      console.log('FacultyContext - Loaded from backend:', response.data);
+      setFaculties(response.data);
+    } catch (error) {
+      console.error('Error loading faculties from backend:', error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsInitialized(true);
+  };
+
+  // Load faculties on mount
+  useEffect(() => {
+    refreshFaculties();
   }, []);
 
-  // Save faculties to localStorage whenever they change
-  useEffect(() => {
-    if (isInitialized) {
-      console.log('FacultyContext - Saving to localStorage:', faculties);
-      localStorage.setItem('faculties', JSON.stringify(faculties));
+  const addFaculty = async (facultyData: Omit<Faculty, 'id'>) => {
+    try {
+      console.log('FacultyContext - Adding faculty:', facultyData);
+      const response = await api.post('/slots/faculties', facultyData);
+      setFaculties(prev => [...prev, response.data]);
+      console.log('FacultyContext - Faculty added:', response.data);
+    } catch (error) {
+      console.error('Error adding faculty:', error);
+      throw error;
     }
-  }, [faculties, isInitialized]);
-
-  const addFaculty = (faculty: Faculty) => {
-    console.log('FacultyContext - Adding faculty:', faculty);
-    setFaculties(prev => {
-      const updated = [...prev, faculty];
-      console.log('FacultyContext - Updated faculties:', updated);
-      return updated;
-    });
   };
 
-  const updateFaculty = (id: number, updatedData: Omit<Faculty, 'id'>) => {
-    console.log('FacultyContext - Updating faculty:', id, updatedData);
-    setFaculties(prev => prev.map(f => 
-      f.id === id ? { ...f, ...updatedData } : f
-    ));
+  const updateFaculty = async (id: string, updatedData: Omit<Faculty, 'id'>) => {
+    try {
+      console.log('FacultyContext - Updating faculty:', id, updatedData);
+      const response = await api.patch(`/slots/faculties/${id}`, updatedData);
+      setFaculties(prev => prev.map(f => 
+        f.id === id ? response.data : f
+      ));
+      console.log('FacultyContext - Faculty updated:', response.data);
+    } catch (error) {
+      console.error('Error updating faculty:', error);
+      throw error;
+    }
   };
 
-  const deleteFaculty = (id: number) => {
-    console.log('FacultyContext - Deleting faculty:', id);
-    setFaculties(prev => prev.filter(f => f.id !== id));
+  const deleteFaculty = async (id: string) => {
+    try {
+      console.log('FacultyContext - Deleting faculty:', id);
+      await api.delete(`/slots/faculties/${id}`);
+      setFaculties(prev => prev.filter(f => f.id !== id));
+      console.log('FacultyContext - Faculty deleted:', id);
+    } catch (error) {
+      console.error('Error deleting faculty:', error);
+      throw error;
+    }
   };
 
   return (
-    <FacultyContext.Provider value={{ faculties, addFaculty, updateFaculty, deleteFaculty }}>
+    <FacultyContext.Provider value={{ faculties, addFaculty, updateFaculty, deleteFaculty, refreshFaculties, isLoading }}>
       {children}
     </FacultyContext.Provider>
   );

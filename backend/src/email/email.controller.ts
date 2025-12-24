@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
 import { EmailService } from './email.service';
 
 @Controller('email')
@@ -14,6 +14,7 @@ export class EmailController {
       return result;
     } catch (error) {
       console.error('Controller error:', error.message);
+      console.error('Full error:', error);
       throw new HttpException(
         {
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
